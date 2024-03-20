@@ -4,7 +4,7 @@ os.makedirs("logs", exist_ok=True)
 log_file_path = os.path.join("logs", f'{time.strftime("%Y%m%d%H%M%S")}-limited_checker.log')
 logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(message)s')
 
-def read_cookies_from_file(file_path='cookies.txt'):
+def read_cookies(file_path='cookies.txt'):
     if os.path.exists(file_path):
         with open(file_path, 'r') as file:
             cookies = [line.strip() for line in file.readlines()]
@@ -55,7 +55,7 @@ def get_limiteds():
         print(f"Error fetching limiteds from Rolimons API: {response.status_code}")
         return {}
 
-async def check_item_ownership_async(session, user_id, asset_id, cookies):
+async def check_ownership(session, user_id, asset_id, cookies):
     headers = {'Cookie': f'.ROBLOSECURITY={random.choice(cookies)}'}
     is_owned = f"https://inventory.roblox.com/v1/users/{user_id}/items/0/{asset_id}/is-owned"
     async with session.get(is_owned, headers=headers) as response:
@@ -69,8 +69,8 @@ async def check_item_ownership_async(session, user_id, asset_id, cookies):
             print(f"Error checking limited ownership from Roblox API: {response.status}")
             return None
 
-async def main_async():
-    cookies = read_cookies_from_file()
+async def main():
+    cookies = read_cookies()
     asyncio.set_event_loop(asyncio.new_event_loop())
     validated_cookies = [cookie[1] for cookie in (await validate_cookies(cookies)) if cookie]
     if not validated_cookies:
@@ -87,7 +87,7 @@ async def main_async():
         for limited_id, details in assets.items():
             name = details[0]
             asset_id = limited_id
-            task = check_item_ownership_async(session, user_id, asset_id, validated_cookies)
+            task = check_ownership(session, user_id, asset_id, validated_cookies)
             tasks.append(task)
         responses = await asyncio.gather(*tasks)
         await asyncio.sleep(1)
@@ -112,4 +112,4 @@ async def main_async():
         for item in owned_items_sorted:
             print(f"{item[0]} ({item[1]}) - Value: {item[2]}" if item[1] else f"{item[0]} - Value: {item[2]}")
 
-asyncio.run(main_async())
+asyncio.run(main())
