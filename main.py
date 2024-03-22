@@ -52,22 +52,25 @@ def get_limiteds():
     if response.status_code == 200:
         return response.json()["items"]
     else:
-        print(f"Error fetching limiteds from Rolimons API: {response.status_code}")
+        print(f"Failed to limiteds from Rolimons API: {response.status_code}")
         return {}
 
 async def check_ownership(session, user_id, asset_id, cookies):
     headers = {'Cookie': f'.ROBLOSECURITY={random.choice(cookies)}'}
-    is_owned = f"https://inventory.roblox.com/v1/users/{user_id}/items/0/{asset_id}/is-owned"
-    async with session.get(is_owned, headers=headers) as response:
+    url = f"https://inventory.roblox.com/v1/users/{user_id}/items/asset/{asset_id}"
+    async with session.get(url, headers=headers) as response:
         if response.status == 200:
-            json_data = await response.json()
-            if isinstance(json_data, bool):
-                return json_data
-            else:
-                return json_data["data"][0]["value"]
+            data = await response.json()
+            return len(data.get("data", []))
         else:
-            print(f"Error checking limited ownership from Roblox API: {response.status}")
-            return None
+            print(f"Failed to check limited ownership from Roblox API: {response.status}")
+            return 0
+        
+async def getuser(session, user_id, cookies):
+    headers = {'Cookie': f'.ROBLOSECURITY={random.choice(cookies)}'}
+    async with session.get(f"https://users.roblox.com/v1/users/{user_id}", headers=headers) as response:
+            userdata = await response.json()
+            return userdata.get("name")
 
 async def main():
     cookies = read_cookies()
@@ -78,12 +81,15 @@ async def main():
         return
     print()
     user_id = input("Enter PlayerId: ")
-    assets = get_limiteds()
-    if not assets:
-        print("Unable to fetch limiteds. Exiting.")
-        return
     async with aiohttp.ClientSession() as session:
+        username = await getuser(session, user_id, validated_cookies)
+        print(f"Fetching limiteds owned by {username} ({user_id})...")
+        assets = get_limiteds()
+        if not assets:
+            print("Unable to fetch limiteds!")
+            return
         tasks = []
+        total_limiteds_owned = 0
         for limited_id, details in assets.items():
             name = details[0]
             asset_id = limited_id
@@ -93,23 +99,28 @@ async def main():
         await asyncio.sleep(1)
     owned_items = []
     for limited_id, response in zip(assets.keys(), responses):
+        total_limiteds_owned += response
         if response:
             details = assets[limited_id]
-            name = details[0]
-            acronym = details[1]
-            value = details[4]
-            owned_items.append((name, acronym, value))
+            name, acronym, _, _, value, _, _, _, _, _ = details
+            owned_items.append((name, acronym, value, response))
             if acronym:
-                logging.info(f"{user_id} owns {name} ({acronym}) - Value: {value}")
+                logging.info(f"{username} owns {name} ({acronym}) - Value: {value}" + (f" (x{response})" if response > 1 else ""))
             else:
-                logging.info(f"{user_id} owns {name} - Value: {value}")
+                logging.info(f"{username} owns {name} - Value: {value}" + (f" (x{response})" if response > 1 else ""))
     owned_items_sorted = sorted(owned_items, key=lambda x: x[2], reverse=True)
     if not owned_items_sorted:
-        logging.info(f"{user_id} doesn't own any limiteds!")
-        print(f"\n{user_id} doesn't own any limiteds!")
-    else:
-        print(f"\nLimiteds owned by {user_id} (Sorted by Value, Highest - Lowest):\n")
-        for item in owned_items_sorted:
-            print(f"{item[0]} ({item[1]}) - Value: {item[2]}" if item[1] else f"{item[0]} - Value: {item[2]}")
+        logging.info(f"{username} doesn't own any limiteds!")
+        print(f"\n{username} doesn't own any limiteds!")
+        return
+    print(f"\nLimiteds owned by {username} (Sorted by Value, Highest - Lowest):\n")
+    for item in owned_items_sorted:
+        item_name = f"{item[0]} ({item[1]})" if item[1] else item[0]
+        item_info = f"{item_name} - Value: {item[2]}"
+        if item[3] > 1:
+            item_info += f" (x{item[3]})"
+        print(item_info)
+    logging.info(f"\nTotal limiteds owned by {username}: {total_limiteds_owned}")
+    print(f"\nTotal limiteds owned by {username}: {total_limiteds_owned}")
 
 asyncio.run(main())
